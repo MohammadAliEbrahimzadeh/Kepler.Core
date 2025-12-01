@@ -4,9 +4,7 @@
 		<PackageId>RadenoorNuGets</PackageId>
 		<Version>1.0.0</Version>
 		<Authors>MohammadAliEbrahimzadeh</Authors>
-		<Company>Radenoor</Company>
-		<Description>Private NuGet package for common utilities</Description>
-		<RepositoryUrl>https://github.com/MohammadAliEbrahimzadeh/RadenoorNuGets</RepositoryUrl>
+		<RepositoryUrl>https://github.com/MohammadAliEbrahimzadeh/Kepler.Core</RepositoryUrl>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 	<ItemGroup>
