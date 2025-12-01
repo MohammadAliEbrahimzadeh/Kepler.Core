@@ -27,13 +27,11 @@ public class ProductPublicPolicy : IKeplerPolicy<Product>
     public void Configure(IKeplerPolicyBuilder<Product> builder)
     {
         builder
-            .AllowFields(p => p.Name, p => p.Color)
-            .AllowFilter(p => p.Name, FilterOperation.Contains)
-            .AllowOrderBy(p => p.Name, OrderDirection.Ascending | OrderDirection.Descending)
-            .AllowNestedFields(p => p.Category,
-                nested => nested
-                    .AllowFields(c => c.Name)
-                    .MaxDepth(1));
+            .AllowFields(x => x.Color!, x => x.Name!, x => x.MakeFlag, x => x.SellStartDate, x => x.ProductID)
+            .AllowOrderBy(x => x.SellStartDate!)
+            .AllowFilter(x => x.MakeFlag, FilterOperationEnum.Equals)
+            .AllowFilter(x => x.ProductID, FilterOperationEnum.Equals)
+            .AllowFilter(x => x.Name, FilterOperationEnum.StartsWith);
     }
 }
 
