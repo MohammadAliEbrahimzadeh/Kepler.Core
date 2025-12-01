@@ -55,10 +55,7 @@ builder.Services.AddKepler()
 
   }
 
-  v1.0.0 is beta — OSS under MIT. Fork it, contribute (ordering tweaks welcome), report bugs, or tell me why it sucks. Happy for all feedback.
-
-Roadmap: Computed props, global filters, Blazor demo.
-Contribute: PRs for tests/benches!
+  v1.0.0 is beta — OSS under MIT.Happy for all feedback.
 
 Installation & Usage
 See Quick Start above.
