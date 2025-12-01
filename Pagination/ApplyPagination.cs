@@ -1,5 +1,6 @@
 ﻿using Ardalis.GuardClauses;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 
 namespace Kepler.Core.Pagination;
 
