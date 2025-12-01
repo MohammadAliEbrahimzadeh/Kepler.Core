@@ -44,7 +44,7 @@ public class ProductPublicPolicy : IKeplerPolicy<Product>
 // 3. Register Policies
 // ---------------------------------------------
 builder.Services.AddKepler()
-    .AddKeplerPoliciesFromAssembly(typeof(ProductPublicPolicy).Assembly)
+    AddKeplerPolicy<Product, ProductPublicPolicy>()
     .ValidateKeplerPolicies();
 
 
