@@ -1,9 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
-		<PackageId>RadenoorNuGets</PackageId>
+		<PackageId>Kepler.Core</PackageId>
 		<Version>1.0.0</Version>
 		<Authors>MohammadAliEbrahimzadeh</Authors>
+		<Description>Kepler.Core is a flexible EF Core extension that enables safe, dynamic, and declarative selection of allowed fields in LINQ queries.
+		  Ideal for building APIs with strict DTO projection and reduced over-fetching.</Description>
 		<RepositoryUrl>https://github.com/MohammadAliEbrahimzadeh/Kepler.Core</RepositoryUrl>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
