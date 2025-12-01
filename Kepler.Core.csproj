@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<PackageId>Kepler.EFCore</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>Mohammad Ali Ebrahimzadeh</Authors>
+		<Description>Typed policies for EF Core projections, filters, nested navigation, and security. Slim queries, no leaks, 30-47% faster.</Description>
+		<PackageTags>efcore;projections;filters;security;dotnet;orm</PackageTags>
+		<PackageProjectUrl>https://github.com/MohammadAliEbrahimzadeh/KeplerDemo</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MohammadAliEbrahimzadeh/KeplerDemo</RepositoryUrl>
+		<RepositoryType>github</RepositoryType>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Ardalis.GuardClauses" Version="5.0.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+		<PackageReference Include="Mapster" Version="7.3.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="xunit" Version="2.6.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+		<PackageReference Include="coverlet.collector" Version="6.0.0" />
+	</ItemGroup>
+	<ItemGroup>
+		<Compile Include="**\*.cs" Exclude="bin\**;obj\**;**\*.Test\**" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="README.md">
+			<Pack>true</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+</Project>
