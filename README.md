@@ -25,7 +25,7 @@ using Kepler.Core.Builder;
 using Kepler.Core.Enums;
 using YourDomain.Entities;
 
-[KeplerPolicyName("Public")]
+[KeplerPolicyName("Filter")]
 public class ProductPublicPolicy : IKeplerPolicy<Product>
 {
     public void Configure(IKeplerPolicyBuilder<Product> builder)
