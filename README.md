@@ -1,7 +1,11 @@
 # **Kepler.Core**
-Typed policies for EF Core: projections, filters, nested navigation, and security — in one fluent, compile-safe class.
+Typed policies for EF Core: projections, filters, nested navigation, and security — all defined in one fluent, compile-safe class.
 
-Kepler.Core is a lightweight extension for Entity Framework Core that centralizes what data can be fetched, filtered, ordered, and nested — all inside a single, type-safe policy per entity.
+📌 Status: BETA — Active development
+Kepler.Core is stable for basic usage, but APIs may change as real-world feedback comes in.
+
+Kepler.Core is a lightweight extension for Entity Framework Core that centralizes what data may be fetched, filtered, ordered, or traversed from an entity — using a single policy per entity.
+It helps eliminate over-fetching, enforce strict API contracts, and simplify DTO-driven development.
 
 ---
 
