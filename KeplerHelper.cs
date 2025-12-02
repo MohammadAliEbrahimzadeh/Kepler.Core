@@ -157,9 +157,8 @@ public static class KeplerExtensions
             var nestedPolicies = KeplerRegistry.GetNestedPolicies(typeof(T).Name, keplerPolicyConfig.PolicyName);
             if (!policies.TryGetValue(keplerPolicyConfig.Role, out var fields))
                 throw new InvalidOperationException($"Role '{keplerPolicyConfig.Role}' not found in policy '{keplerPolicyConfig.PolicyName}'");
-            var globallyExcluded = keplerPolicyConfig.IgnoreGlobalExceptions
-                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties<T>();
+            var globallyExcluded = keplerPolicyConfig.IgnoreGlobalExceptions ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                     : KeplerGlobalExcludeHelper.GetGloballyExcludedPropertiesIncludingEFConfig<T>();
             var allNavigationProps = GetAllNavigationProperties<T>().ToList();
             var navigationProps = fields
                 .Where(f => allNavigationProps.Contains(f, StringComparer.OrdinalIgnoreCase))

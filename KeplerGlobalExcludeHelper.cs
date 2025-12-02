@@ -292,4 +292,32 @@ public static class KeplerGlobalExcludeHelper
             return true;
         return false;
     }
+
+    /// <summary>
+    /// Get all globally excluded properties from BOTH:
+    /// - [KeplerGlobalExclude] attributes
+    /// - EF Core .GloballyExclude() configuration
+    /// Results are cached for performance
+    /// </summary>
+    public static HashSet<string> GetGloballyExcludedPropertiesIncludingEFConfig(Type entityType)
+    {
+        // Get attribute-level exclusions
+        var attributeExclusions = GetGloballyExcludedProperties(entityType);
+
+        // Get EF Core configuration level exclusions
+        var efExclusions = KeplerEntityTypeBuilderExtensions.GetEFLevelGlobalExclusions(entityType);
+
+        // Merge both
+        attributeExclusions.UnionWith(efExclusions);
+
+        return attributeExclusions;
+    }
+
+    /// <summary>
+    /// Generic version for convenience
+    /// </summary>
+    public static HashSet<string> GetGloballyExcludedPropertiesIncludingEFConfig<T>() where T : class
+    {
+        return GetGloballyExcludedPropertiesIncludingEFConfig(typeof(T));
+    }
 }

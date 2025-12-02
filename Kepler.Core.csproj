@@ -2,7 +2,7 @@
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 		<PackageId>Kepler.Core</PackageId>
-		<Version>1.0.1-beta</Version>
+		<Version>1.0.2-beta</Version>
 		<Authors>MohammadAliEbrahimzadeh</Authors>
 		<Description>
 			Kepler.Core is a flexible EF Core extension that enables safe, dynamic,
