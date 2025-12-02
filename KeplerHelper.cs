@@ -18,7 +18,6 @@ public static class KeplerExtensions
     {
         if (fieldNames == null || fieldNames.Length == 0)
             return query;
-
         return SelectFields(query, fieldNames, null, null);
     }
 
@@ -26,32 +25,24 @@ public static class KeplerExtensions
         where T : class
     {
         var allowedFiltersDict = KeplerRegistry.GetAllowedFilters(typeName, policyName);
-
         if (!allowedFiltersDict.TryGetValue(role, out var allowedFilters))
         {
             allowedFilters = new Dictionary<string, FilterPolicy>();
         }
-
         var parameter = Expression.Parameter(typeof(T), "x");
         Expression? predicate = null;
-
         foreach (var kvp in allowedFilters)
         {
             var filterPolicy = kvp.Value;
             var propInfo = filter.GetType().GetProperty(filterPolicy.PropertyName);
             if (propInfo == null) continue;
-
             var value = propInfo.GetValue(filter);
             if (value == null) continue;
-
             Guard.Against.Null(value, nameof(filter), $"Filter value for {filterPolicy.PropertyName} cannot be null.");
-
             if (value.GetType() != filterPolicy.PropertyType)
                 throw new ArgumentException($"Filter value type mismatch for {filterPolicy.PropertyName}: expected {filterPolicy.PropertyType.Name}, got {value.GetType().Name}");
-
             var memberAccess = Expression.PropertyOrField(parameter, filterPolicy.PropertyName);
             Expression? condition = null;
-
             // string Contains
             if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.Contains) &&
                 filterPolicy.PropertyType == typeof(string))
@@ -62,7 +53,6 @@ public static class KeplerExtensions
                     Expression.Constant(value)
                 );
             }
-
             // string StartsWith
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.StartsWith) &&
                      filterPolicy.PropertyType == typeof(string))
@@ -73,37 +63,31 @@ public static class KeplerExtensions
                     Expression.Constant(value)
                 );
             }
-
             // Equals
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.Equals))
             {
                 condition = Expression.Equal(memberAccess, Expression.Constant(value, filterPolicy.PropertyType));
             }
-
             // GreaterThan
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.GreaterThan))
             {
                 condition = Expression.GreaterThan(memberAccess, Expression.Constant(value, filterPolicy.PropertyType));
             }
-
             // GreaterThanOrEqual
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.GreaterThanOrEqual))
             {
                 condition = Expression.GreaterThanOrEqual(memberAccess, Expression.Constant(value, filterPolicy.PropertyType));
             }
-
             // LessThan
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.LessThan))
             {
                 condition = Expression.LessThan(memberAccess, Expression.Constant(value, filterPolicy.PropertyType));
             }
-
             // LessThanOrEqual
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.LessThanOrEqual))
             {
                 condition = Expression.LessThanOrEqual(memberAccess, Expression.Constant(value, filterPolicy.PropertyType));
             }
-
             // IN (list)
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.In))
             {
@@ -111,17 +95,14 @@ public static class KeplerExtensions
                 {
                     var elementType = Nullable.GetUnderlyingType(filterPolicy.PropertyType)
                                       ?? filterPolicy.PropertyType;
-
                     var containsMethod = typeof(Enumerable)
                         .GetMethods()
                         .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
                         .MakeGenericMethod(elementType);
-
                     var typedArray = rawList
                         .Cast<object>()
                         .Select(v => Convert.ChangeType(v, elementType))
                         .ToArray();
-
                     condition = Expression.Call(
                         containsMethod,
                         Expression.Constant(typedArray),
@@ -129,7 +110,6 @@ public static class KeplerExtensions
                     );
                 }
             }
-
             // ANY (collection.Any(...))
             else if (filterPolicy.AllowedOperations.HasFlag(FilterOperationEnum.Any))
             {
@@ -141,12 +121,9 @@ public static class KeplerExtensions
                         .Where(m => m.Name == "Any" && m.GetParameters().Length == 2)
                         .First()
                         .MakeGenericMethod(subFilter.Parameters[0].Type);
-
                     condition = Expression.Call(anyMethod, memberAccess, subFilter);
                 }
             }
-
-
             if (condition != null)
             {
                 predicate = predicate == null ? condition : Expression.AndAlso(predicate, condition);
@@ -156,70 +133,68 @@ public static class KeplerExtensions
                 throw new InvalidOperationException($"No allowed operation matches for {filterPolicy.PropertyName} with value type {value.GetType().Name}");
             }
         }
-
         return predicate != null ? query.Where(Expression.Lambda<Func<T, bool>>(predicate, parameter)) : query;
     }
 
-    public static IQueryable<T> ApplyKeplerPolicy<T>(
-        this IQueryable<T> query,
-        string policyName,
-        object? filter = null,
-        bool ignoreGlobalExceptions = false,
-        string role = "Default")
+    public static IQueryable<T> ApplyKeplerPolicy<T>(this IQueryable<T> query, KeplerPolicyConfig keplerPolicyConfig)
         where T : class
     {
+        // Delegate to overload for backward compatibility (ignores lambda).
+        return ApplyKeplerPolicy(query, keplerPolicyConfig, out _);
+    }
+
+    public static IQueryable<T> ApplyKeplerPolicy<T>(this IQueryable<T> query, KeplerPolicyConfig keplerPolicyConfig, out Expression? debugLambda)
+        where T : class
+    {
+        debugLambda = null;
+
         try
         {
-            var policies = KeplerRegistry.GetPolicy(typeof(T).Name, policyName);
-            var exclusions = KeplerRegistry.GetExclusions(typeof(T).Name, policyName);
-            var nestedPolicies = KeplerRegistry.GetNestedPolicies(typeof(T).Name, policyName);
-
-            if (!policies.TryGetValue(role, out var fields))
-                throw new InvalidOperationException($"Role '{role}' not found in policy '{policyName}'");
-
-
-            var globallyExcluded = ignoreGlobalExceptions
+            if (string.IsNullOrEmpty(keplerPolicyConfig.PolicyName))
+                throw new Exception("Policy name cant be null");
+            var policies = KeplerRegistry.GetPolicy(typeof(T).Name, keplerPolicyConfig.PolicyName);
+            var exclusions = KeplerRegistry.GetExclusions(typeof(T).Name, keplerPolicyConfig.PolicyName);
+            var nestedPolicies = KeplerRegistry.GetNestedPolicies(typeof(T).Name, keplerPolicyConfig.PolicyName);
+            if (!policies.TryGetValue(keplerPolicyConfig.Role, out var fields))
+                throw new InvalidOperationException($"Role '{keplerPolicyConfig.Role}' not found in policy '{keplerPolicyConfig.PolicyName}'");
+            var globallyExcluded = keplerPolicyConfig.IgnoreGlobalExceptions
                 ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties<T>();
-
             var allNavigationProps = GetAllNavigationProperties<T>().ToList();
-
             var navigationProps = fields
                 .Where(f => allNavigationProps.Contains(f, StringComparer.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-
             var scalarFields = fields
                 .Where(f => !allNavigationProps.Contains(f, StringComparer.OrdinalIgnoreCase))
                 .Where(f => !globallyExcluded.Contains(f, StringComparer.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-
-
-            var excludedFields = exclusions.TryGetValue(role, out var excluded)
+            var excludedFields = exclusions.TryGetValue(keplerPolicyConfig.Role, out var excluded)
                 ? excluded
                 : Enumerable.Empty<string>();
-
-
-            var allExcludedFields = ignoreGlobalExceptions
+            var allExcludedFields = keplerPolicyConfig.IgnoreGlobalExceptions
                 ? excludedFields.ToList()
                 : excludedFields.Union(globallyExcluded, StringComparer.OrdinalIgnoreCase).ToList();
-
-            nestedPolicies.TryGetValue(role, out var roleNestedPolicies);
+            nestedPolicies.TryGetValue(keplerPolicyConfig.Role, out var roleNestedPolicies);
             var nestedPoliciesDict = roleNestedPolicies ?? new Dictionary<string, NestedFieldPolicy>();
-
             var projectedQuery = SelectFieldsWithNested(
                 query,
                 scalarFields,
                 allExcludedFields,
                 navigationProps,
                 nestedPoliciesDict,
-                ignoreGlobalExceptions
+                keplerPolicyConfig.IgnoreGlobalExceptions
             );
-
-            if (filter != null)
+            if (keplerPolicyConfig.Filters != null)
             {
-                projectedQuery = ApplyFilters(projectedQuery, typeof(T).Name, policyName, role, filter);
+                projectedQuery = ApplyFilters(projectedQuery, typeof(T).Name, keplerPolicyConfig.PolicyName, keplerPolicyConfig.Role, keplerPolicyConfig.Filters);
+            }
+
+            // Capture the projection lambda for debugging if requested.
+            if (keplerPolicyConfig.ReturnLambdaExpression)
+            {
+                debugLambda = ExtractProjectionLambda(projectedQuery);
             }
 
             return projectedQuery;
@@ -227,8 +202,32 @@ public static class KeplerExtensions
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Error applying Kepler policy '{policyName}' for role '{role}': {ex.Message}", ex);
+                $"Error applying Kepler policy '{keplerPolicyConfig.PolicyName}' for role '{keplerPolicyConfig.Role}': {ex.Message}", ex);
         }
+    }
+
+    private static Expression? ExtractProjectionLambda<T>(IQueryable<T> query) where T : class
+    {
+        var expr = query.Expression;
+        // Peel off outer Where (filters) to reach the inner Select projection.
+        while (expr is MethodCallExpression mce)
+        {
+            if (mce.Method.Name == "Select")
+            {
+                // Extract the lambda from the Select call (unwrap UnaryExpression if present).
+                if (mce.Arguments[1] is UnaryExpression ue && ue.Operand is LambdaExpression lambda)
+                {
+                    return lambda;
+                }
+                else if (mce.Arguments[1] is LambdaExpression lambdaDirect)
+                {
+                    return lambdaDirect;
+                }
+            }
+            // Continue to the source expression (Arguments[0]).
+            expr = mce.Arguments[0];
+        }
+        return null;
     }
 
     private static IQueryable<T> SelectFieldsWithNested<T>(
@@ -243,55 +242,37 @@ public static class KeplerExtensions
         IEnumerable<string> globalExcluded = ignoreGlobalExceptions
             ? Enumerable.Empty<string>()
             : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties<T>();
-
         var allExcludedFields = excludeFields == null
             ? globalExcluded.ToList()
             : excludeFields.Union(globalExcluded, StringComparer.OrdinalIgnoreCase).ToList();
-
         // Remove excluded from scalar fields
         var fieldsToSelect = scalarFieldNames
             .Where(f => !allExcludedFields.Contains(f, StringComparer.OrdinalIgnoreCase))
             .ToArray();
-
         if (!fieldsToSelect.Any() && !navigationProps.Any() && !nestedPolicies.Any())
             throw new ArgumentException("No fields to select after applying exclusions");
-
         var parameter = Expression.Parameter(typeof(T), "x");
         var properties = typeof(T).GetProperties();
-
         var selectedProperties = properties
             .Where(p => fieldsToSelect.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
             .ToList();
-
         var allBindings = new List<MemberBinding>();
-
-
         allBindings.AddRange(selectedProperties
             .Select(prop => Expression.Bind(prop, Expression.Property(parameter, prop))));
-
-
         foreach (var excludeName in allExcludedFields)
         {
             var propInfo = properties.FirstOrDefault(p =>
                 string.Equals(p.Name, excludeName, StringComparison.OrdinalIgnoreCase));
-
             if (propInfo == null) continue;
-
             var defaultValue = GetDefaultValueForType(propInfo.PropertyType);
             allBindings.Add(Expression.Bind(propInfo, Expression.Constant(defaultValue, propInfo.PropertyType)));
         }
-
-
         foreach (var navProp in navigationProps)
         {
             var navProperty = properties.FirstOrDefault(p =>
                 string.Equals(p.Name, navProp, StringComparison.OrdinalIgnoreCase));
-
             if (navProperty == null) continue;
-
-
             MemberBinding? nestedBinding = null;
-
             if (nestedPolicies.TryGetValue(navProp, out var nestedPolicy))
             {
                 // Use explicit nested policy
@@ -303,7 +284,6 @@ public static class KeplerExtensions
                 var defaultNested = CreateDefaultNestedPolicy(navProperty.PropertyType, navProp, ignoreGlobalExceptions);
                 nestedBinding = CreateNestedProjection(parameter, navProperty, defaultNested, ignoreGlobalExceptions);
             }
-
             if (nestedBinding != null)
             {
                 allBindings.Add(nestedBinding);
@@ -314,8 +294,6 @@ public static class KeplerExtensions
                 allBindings.Add(Expression.Bind(navProperty, Expression.Property(parameter, navProperty)));
             }
         }
-
-
         var allNavProps = GetAllNavigationProperties<T>();
         foreach (var notIncluded in allNavProps
             .Where(np => !navigationProps.Contains(np, StringComparer.OrdinalIgnoreCase)
@@ -323,21 +301,17 @@ public static class KeplerExtensions
         {
             var navPropInfo = properties.FirstOrDefault(p =>
                 string.Equals(p.Name, notIncluded, StringComparison.OrdinalIgnoreCase));
-
             if (navPropInfo != null)
             {
                 var defaultVal = GetDefaultValueForType(navPropInfo.PropertyType);
                 allBindings.Add(Expression.Bind(navPropInfo, Expression.Constant(defaultVal, navPropInfo.PropertyType)));
             }
         }
-
         if (!allBindings.Any())
             throw new ArgumentException($"No fields configured for type {typeof(T).Name}");
-
         var newExpression = Expression.New(typeof(T));
         var init = Expression.MemberInit(newExpression, allBindings);
         var lambda = Expression.Lambda<Func<T, T>>(init, parameter);
-
         return query.Select(lambda);
     }
 
@@ -345,17 +319,15 @@ public static class KeplerExtensions
         ParameterExpression parameter,
         PropertyInfo navProperty,
         NestedFieldPolicy nestedPolicy,
-        bool ignoreGlobalExceptions)  
+        bool ignoreGlobalExceptions)
     {
         var navPropertyType = navProperty.PropertyType;
         var propertyAccess = Expression.Property(parameter, navProperty);
-
         var isCollection = navPropertyType.IsGenericType &&
                           (navPropertyType.GetGenericTypeDefinition() == typeof(ICollection<>) ||
                            navPropertyType.GetGenericTypeDefinition() == typeof(IEnumerable<>) ||
                            navPropertyType.GetGenericTypeDefinition() == typeof(IList<>) ||
                            navPropertyType.GetGenericTypeDefinition() == typeof(List<>));
-
         if (isCollection)
         {
             var elementType = navPropertyType.GetGenericArguments()[0];
@@ -372,30 +344,25 @@ public static class KeplerExtensions
         Type elementType,
         Expression collectionAccess,
         NestedFieldPolicy nestedPolicy,
-        bool ignoreGlobalExceptions)   
+        bool ignoreGlobalExceptions)
     {
         var elementParameter = Expression.Parameter(elementType, "item");
         var projectionLambda = CreateNestedElementProjection(
             elementType,
             elementParameter,
             nestedPolicy,
-            ignoreGlobalExceptions);   
-
+            ignoreGlobalExceptions);
         var selectMethod = typeof(Enumerable)
             .GetMethods()
             .Where(m => m.Name == "Select" && m.GetGenericArguments().Length == 2)
             .First();
-
         var selectGenericMethod = selectMethod.MakeGenericMethod(elementType, elementType);
         var selectedCollection = Expression.Call(selectGenericMethod, collectionAccess, projectionLambda);
-
         var toListMethod = typeof(Enumerable)
             .GetMethods()
             .First(m => m.Name == "ToList" && m.GetGenericArguments().Length == 1)
             .MakeGenericMethod(elementType);
-
         var listCollection = Expression.Call(toListMethod, selectedCollection);
-
         return Expression.Bind(navProperty, listCollection);
     }
 
@@ -412,7 +379,6 @@ public static class KeplerExtensions
             entityParameter,
             nestedPolicy,
             ignoreGlobalExceptions);
-
         return Expression.Bind(navProperty, entityAccess);
     }
 
@@ -420,26 +386,21 @@ public static class KeplerExtensions
         Type elementType,
         ParameterExpression elementParameter,
         NestedFieldPolicy nestedPolicy,
-        bool ignoreGlobalExceptions)   
+        bool ignoreGlobalExceptions)
     {
         var properties = elementType.GetProperties();
         var allBindings = new List<MemberBinding>();
-
-
         var globallyExcluded = ignoreGlobalExceptions
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties(elementType);
-
         var fieldsToInclude = new List<string>();
-
         if (nestedPolicy.SelectAll)
         {
-
             fieldsToInclude = properties
                 .Where(p => !IsNavigationProperty(p))
                 .Select(p => p.Name)
                 .Where(f => !nestedPolicy.ExcludedFields.Contains(f, StringComparer.OrdinalIgnoreCase))
-                .Where(f => !globallyExcluded.Contains(f)) 
+                .Where(f => !globallyExcluded.Contains(f))
                 .ToList();
         }
         else if (nestedPolicy.AllowedFields.Any())
@@ -447,7 +408,7 @@ public static class KeplerExtensions
             // Include only allowed fields, but respect exclusions
             fieldsToInclude = nestedPolicy.AllowedFields
                 .Where(f => !nestedPolicy.ExcludedFields.Contains(f, StringComparer.OrdinalIgnoreCase))
-                .Where(f => !globallyExcluded.Contains(f)) 
+                .Where(f => !globallyExcluded.Contains(f))
                 .ToList();
         }
         else if (nestedPolicy.ExcludedFields.Any())
@@ -469,7 +430,6 @@ public static class KeplerExtensions
                 .Where(f => !globallyExcluded.Contains(f)) // ← Exclude globally excluded (if not ignoring)
                 .ToList();
         }
-
         // Bind selected properties
         foreach (var fieldName in fieldsToInclude)
         {
@@ -481,7 +441,6 @@ public static class KeplerExtensions
                     Expression.Bind(prop, Expression.Property(elementParameter, prop)));
             }
         }
-
         // Bind policy-specific excluded properties to default
         foreach (var excludedField in nestedPolicy.ExcludedFields)
         {
@@ -494,8 +453,6 @@ public static class KeplerExtensions
                 allBindings.Add(Expression.Bind(prop, constant));
             }
         }
-
-
         if (!ignoreGlobalExceptions)
         {
             foreach (var globalExcluded in globallyExcluded)
@@ -510,7 +467,6 @@ public static class KeplerExtensions
                 }
             }
         }
-
         // Bind all navigation props to default (prevent loading related entities)
         foreach (var navProp in properties.Where(p => IsNavigationProperty(p)))
         {
@@ -521,10 +477,8 @@ public static class KeplerExtensions
                 allBindings.Add(Expression.Bind(navProp, constant));
             }
         }
-
         if (!allBindings.Any())
             throw new ArgumentException($"No fields configured for nested type {elementType.Name}");
-
         var newExpression = Expression.New(elementType);
         var memberInitExpression = Expression.MemberInit(newExpression, allBindings);
         var delegateType = typeof(Func<,>).MakeGenericType(elementType, elementType);
@@ -558,7 +512,6 @@ public static class KeplerExtensions
             return true;
         if (prop.GetCustomAttribute<System.ComponentModel.DataAnnotations.Schema.InversePropertyAttribute>() != null)
             return true;
-
         if (propType.IsClass && propType != typeof(string) && !propType.IsPrimitive && propType != typeof(DateTime) && propType != typeof(decimal))
             return true;
         return false;
@@ -567,24 +520,21 @@ public static class KeplerExtensions
     private static NestedFieldPolicy CreateDefaultNestedPolicy(Type navType, string navName, bool ignoreGlobalExceptions)
     {
         var globalExcludes = ignoreGlobalExceptions
-            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)  // Empty set if ignoring
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) // Empty set if ignoring
             : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties(navType);
-
         var scalarProps = GetScalarPropertiesForType(navType).ToList();
-
         // Only exclude globally excluded properties if NOT ignoring
         var excluded = ignoreGlobalExceptions
             ? new List<string>()
             : scalarProps
                 .Where(p => globalExcludes.Contains(p, StringComparer.OrdinalIgnoreCase))
                 .ToList();
-
         return new NestedFieldPolicy
         {
             NavigationProperty = navName,
             AllowedFields = scalarProps.Except(excluded, StringComparer.OrdinalIgnoreCase).ToList(),
             ExcludedFields = excluded,
-            SelectAll = true,  // ✅ SelectAll = true to include ALL scalar fields
+            SelectAll = true, // ✅ SelectAll = true to include ALL scalar fields
             MaxDepth = 1,
             NestedType = navType
         };
@@ -606,7 +556,6 @@ public static class KeplerExtensions
     {
         if (fieldNames == null || fieldNames.Length == 0)
             return query;
-
         var fieldsToSelect = fieldNames;
         if (excludeFields != null && excludeFields.Any())
         {
@@ -614,30 +563,23 @@ public static class KeplerExtensions
                 .Where(f => !excludeFields.Contains(f, StringComparer.OrdinalIgnoreCase))
                 .ToArray();
         }
-
         if (!fieldsToSelect.Any())
             throw new ArgumentException("No fields to select after applying exclusions");
-
         var parameter = Expression.Parameter(typeof(T), "x");
         var properties = typeof(T).GetProperties();
         var selectedProperties = properties
             .Where(p => fieldsToSelect.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
             .ToList();
-
         var allBindings = new List<MemberBinding>();
-
         allBindings.AddRange(selectedProperties
             .Select(prop => Expression.Bind(prop, Expression.Property(parameter, prop))));
-
         var excludePropNames = excludeFields == null
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(excludeFields, StringComparer.OrdinalIgnoreCase);
-
         foreach (var excludeName in excludePropNames)
         {
             var excludeProp = properties.FirstOrDefault(p =>
                 string.Equals(p.Name, excludeName, StringComparison.OrdinalIgnoreCase));
-
             if (excludeProp != null)
             {
                 var defaultValue = GetDefaultValueForType(excludeProp.PropertyType);
@@ -645,11 +587,9 @@ public static class KeplerExtensions
                 allBindings.Add(Expression.Bind(excludeProp, constant));
             }
         }
-
         var newExpression = Expression.New(typeof(T));
         var memberInitExpression = Expression.MemberInit(newExpression, allBindings);
         var lambda = Expression.Lambda<Func<T, T>>(memberInitExpression, parameter);
-
         return query.Select(lambda);
     }
 
@@ -657,9 +597,7 @@ public static class KeplerExtensions
     {
         if (IsCollectionOrNavigationType(propType))
             return null;
-
         var underlyingType = Nullable.GetUnderlyingType(propType) ?? propType;
-
         if (underlyingType == typeof(string)) return null;
         if (underlyingType == typeof(DateTime)) return default(DateTime);
         if (underlyingType == typeof(DateTimeOffset)) return default(DateTimeOffset);
@@ -668,7 +606,6 @@ public static class KeplerExtensions
         if (underlyingType == typeof(bool)) return false;
         if (underlyingType == typeof(Guid)) return Guid.Empty;
         if (underlyingType == typeof(decimal)) return decimal.Zero;
-
         return null;
     }
 
@@ -683,17 +620,12 @@ public static class KeplerExtensions
                 genericDef == typeof(List<>))
                 return true;
         }
-
         if (propType.IsArray)
             return true;
-
         if (propType.IsClass && propType != typeof(string))
             return true;
-
         return false;
     }
-
-
 
     private static IEnumerable<string> GetScalarPropertiesForType(Type type)
     {
