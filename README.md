@@ -1,3 +1,5 @@
+<img src="assets/Kepler.Core.jpg" alt="Kepler.Core Icon" width="128"/>
+
 # **Kepler.Core**
 Typed policies for EF Core: projections, filters, nested navigation, and security — all defined in one fluent, compile-safe class.
 
