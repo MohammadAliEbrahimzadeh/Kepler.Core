@@ -25,17 +25,15 @@ using Kepler.Core.Builder;
 using Kepler.Core.Enums;
 using YourDomain.Entities;
 
-[KeplerPolicyName("Filter")]
-public class ProductPublicPolicy : IKeplerPolicy<Product>
+[KeplerPolicyName("ItemTest")]
+public class ItemPolicy : IKeplerPolicy<Category>
 {
-    public void Configure(IKeplerPolicyBuilder<Product> builder)
+    public void Configure(IKeplerPolicyBuilder<Category> builder)
     {
         builder
-            .AllowFields(x => x.Color!, x => x.Name!, x => x.MakeFlag, x => x.SellStartDate, x => x.ProductID)
-            .AllowOrderBy(x => x.SellStartDate!)
-            .AllowFilter(x => x.MakeFlag, FilterOperationEnum.Equals)
-            .AllowFilter(x => x.ProductID, FilterOperationEnum.Equals)
-            .AllowFilter(x => x.Name, FilterOperationEnum.StartsWith);
+            .AllowFields(x => x.Name!, x => x.IsDeleted, x => x.Id)
+            .AllowFilter(x => x.Name!, FilterOperationEnum.StartsWith)
+            .AllowOrderBy(x => x.Id);
     }
 }
 
@@ -44,35 +42,22 @@ public class ProductPublicPolicy : IKeplerPolicy<Product>
 // 3. Register Policies
 // ---------------------------------------------
 builder.Services.AddKepler()
-    .AddKeplerPolicy<Product, ProductPublicPolicy>()
+    .AddKeplerPolicy<Item, ItemPolicy>()
     .ValidateKeplerPolicies();
 
 
 // ---------------------------------------------
 // 4. Apply in a Query
 // ---------------------------------------------
-public async Task<CustomResponse> GetProductsAsync(ProductFilterDto dto, CancellationToken cancellationToken)
-{
-    var productQuery = _unitOfWork.GetAsQueryable<Product>()
-        .ApplyKeplerOrdering("Filter", x => x.SellStartDate, OrderOperationEnum.Ascending)
-        .ApplyKeplerPolicy("Filter", dto);
-
-    var count = await productQuery.CountAsync();
-
-    var products = await productQuery
-        .ApplyKeplerPagination()
-        .ProjectToType<ProductTestDto>()
-        .ToListAsync(cancellationToken);
-
-    return new CustomResponse
+   public async Task<CustomResponse> KeplerTestAsync(CancellationToken cancellationToken)
     {
-        Data = products,
-        IsSuccess = true,
-        Message = "Returned",
-        StatusCode = HttpStatusCode.OK,
-        TotalCount = count
-    };
-}
+        var itemQueryable = _unitOfWork.GetAsQueryable<Category>(cancellationToken);
+
+        var data = await itemQueryable.ApplyKeplerPolicy
+            (new KeplerPolicyConfig { PolicyName = "ItemTest", ReturnLambdaExpression = true }, out Expression? debugLambda).ToListAsync();
+
+        return new CustomResponse(data: data, isSuccess: true, message: ResponseMessages.DataRetrievedSuccess, statusCode: HttpStatusCode.OK);
+    }
 
 License
 
