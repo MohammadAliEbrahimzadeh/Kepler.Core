@@ -2,7 +2,7 @@
 	<PropertyGroup>
 		<TargetFramework>net9.0</TargetFramework>
 		<PackageId>Kepler.Core</PackageId>
-		<Version>1.0.2-beta</Version>
+		<Version>1.0.4-beta</Version>
 		<Authors>MohammadAliEbrahimzadeh</Authors>
 		<Description>
 			Kepler.Core is a flexible EF Core extension that enables safe, dynamic,
@@ -10,17 +10,17 @@
 			with strict DTO projection and reduced over-fetching.
 		</Description>
 		<RepositoryUrl>https://github.com/MohammadAliEbrahimzadeh/Kepler.Core</RepositoryUrl>
-
 		<PackageProjectUrl>https://github.com/MohammadAliEbrahimzadeh/Kepler.Core</PackageProjectUrl>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>icon.jpg</PackageIcon>
 		<PackageTags>efcore;linq;projection;dynamic;api;kepler;extensions</PackageTags>
-
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<None Include="README.md" Pack="true" PackagePath="" />
+		<None Include="assets/Kepler.Core.jpg" Pack="true" PackagePath="icon.jpg" />
 	</ItemGroup>
 
 	<ItemGroup>
