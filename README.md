@@ -153,7 +153,7 @@ KeplerPolicyConfig.CreateWithSql("PolicyName")
 KeplerPolicyConfig.CreateWithFullDebug("PolicyName")
 
 // All support filters and custom roles:
-KeplerPolicyConfig.CreateWithSql("PolicyName", filters: dto, role: "Admin")
+KeplerPolicyConfig.CreateWithSql("PolicyName", filters: dto)
 ```
 
 ---
