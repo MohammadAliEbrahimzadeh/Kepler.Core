@@ -1,73 +1,210 @@
 <img src="assets/Kepler.Core.jpg" alt="Kepler.Core Icon" width="128"/>
 
 # **Kepler.Core**
+
 Typed policies for EF Core: projections, filters, nested navigation, and security — all defined in one fluent, compile-safe class.
 
-📌 Status: BETA — Active development
+📌 **Status:** BETA — Active development  
 Kepler.Core is stable for basic usage, but APIs may change as real-world feedback comes in.
 
+---
+
+## **What is Kepler.Core?**
+
 Kepler.Core is a lightweight extension for Entity Framework Core that centralizes what data may be fetched, filtered, ordered, or traversed from an entity — using a single policy per entity.
-It helps eliminate over-fetching, enforce strict API contracts, and simplify DTO-driven development.
+
+It helps:
+- ✅ Eliminate over-fetching (select only what you need)
+- ✅ Enforce strict API contracts (control what's exposed)
+- ✅ Simplify DTO-driven development (less boilerplate)
+- ✅ Debug with confidence (see generated SQL + projection lambda)
 
 ---
 
 ## **Quick Start**
 
+### **1. Install**
+```bash
+dotnet add package Kepler.Core
+```
+
+### **2. Define a Policy**
 ```csharp
-// ---------------------------------------------
-// 1. Install
-// dotnet add package Kepler.EFCore
-// ---------------------------------------------
-
-
-// ---------------------------------------------
-// 2. Define a Policy
-// ---------------------------------------------
 using Kepler.Core.Builder;
 using Kepler.Core.Enums;
 using YourDomain.Entities;
 
-[KeplerPolicyName("ItemTest")]
-public class ItemPolicy : IKeplerPolicy<Category>
+[KeplerPolicyName("Public")]
+public class ProductPublicPolicy : IKeplerPolicy<Product>
 {
-    public void Configure(IKeplerPolicyBuilder<Category> builder)
+    public void Configure(IKeplerPolicyBuilder<Product> builder)
     {
         builder
-            .AllowFields(x => x.Name!, x => x.IsDeleted, x => x.Id)
-            .AllowFilter(x => x.Name!, FilterOperationEnum.StartsWith)
-            .AllowOrderBy(x => x.Id);
+            .AllowFields(x => x.Name, x => x.Price, x => x.Id)
+            .AllowFilter(x => x.Name, FilterOperationEnum.StartsWith)
+            .AllowOrderBy(x => x.Price);
     }
 }
+```
 
-
-// ---------------------------------------------
-// 3. Register Policies
-// ---------------------------------------------
+### **3. Register Policies**
+```csharp
 builder.Services.AddKepler()
-    .AddKeplerPolicy<Item, ItemPolicy>()
+    .AddKeplerPolicy<Product, ProductPublicPolicy>()
     .ValidateKeplerPolicies();
+```
 
+### **4. Apply in Queries**
 
-// ---------------------------------------------
-// 4. Apply in a Query
-// ---------------------------------------------
-   public async Task<CustomResponse> KeplerTestAsync(CancellationToken cancellationToken)
-    {
-        var itemQueryable = _unitOfWork.GetAsQueryable<Category>(cancellationToken);
+**Basic usage (no debug info):**
+```csharp
+var products = await query
+    .ApplyKeplerPolicy(KeplerPolicyConfig.Create("Public", filters: dto))
+    .ToListAsync();
+```
 
-        var data = await itemQueryable.ApplyKeplerPolicy
-            (new KeplerPolicyConfig { PolicyName = "ItemTest", ReturnLambdaExpression = true }, out Expression? debugLambda).ToListAsync();
+**With SQL visibility:**
+```csharp
+var products = await query
+    .ApplyKeplerPolicy(
+        KeplerPolicyConfig.CreateWithSql("Public", filters: dto),
+        out string? generatedSql)
+    .ToListAsync();
 
-        return new CustomResponse(data: data, isSuccess: true, message: ResponseMessages.DataRetrievedSuccess, statusCode: HttpStatusCode.OK);
-    }
+Console.WriteLine(generatedSql);
+// SELECT [Name], [Price], [Id] FROM [Products] WHERE [Name] LIKE @p0
+```
 
-License
+**With Lambda inspection:**
+```csharp
+var products = await query
+    .ApplyKeplerPolicy(
+        KeplerPolicyConfig.CreateWithLambda("Public", filters: dto),
+        out Expression? projectionLambda)
+    .ToListAsync();
+
+Console.WriteLine(projectionLambda);
+// {x => new Product() {Name = x.Name, Price = x.Price, Id = x.Id}}
+```
+
+**With Full Debug Info (SQL + Lambda):**
+```csharp
+var products = await query
+    .ApplyKeplerPolicy(
+        KeplerPolicyConfig.CreateWithFullDebug("Public", filters: dto),
+        out KeplerDebugInfo? debug)
+    .ToListAsync();
+
+Console.WriteLine($"SQL: {debug?.GeneratedSql}");
+Console.WriteLine($"Lambda: {debug?.ProjectionLambda}");
+```
+
+---
+
+## **Key Features**
+
+### **Fluent Policy Builder**
+```csharp
+builder
+    .AllowFields(x => x.Name, x => x.Email)
+    .AllowFilter(x => x.Status, FilterOperationEnum.Equals)
+    .AllowOrderBy(x => x.CreatedAt)
+    .MaxDepth(2);  // Limit nested traversal depth
+```
+
+### **Global Field Exclusions**
+Exclude sensitive fields automatically (across all policies):
+
+```csharp
+// Option 1: Via attribute
+[KeplerGlobalExclude("Contains PII")]
+public string Password { get; set; }
+
+// Option 2: Via EF Core config
+builder.Entity<User>()
+    .GloballyExclude(x => x.ApiKey, x => x.InternalNotes);
+```
+
+### **Nested Navigation Policies**
+```csharp
+builder
+    .AllowNestedFields(x => x.Orders, nested =>
+        nested.SelectFields(x => x.Id, x => x.Total)
+    );
+```
+
+---
+
+## **Factory Methods**
+
+Clean, self-documenting configuration:
+
+```csharp
+// No debug
+KeplerPolicyConfig.Create("PolicyName")
+
+// Lambda inspection
+KeplerPolicyConfig.CreateWithLambda("PolicyName")
+
+// SQL visibility
+KeplerPolicyConfig.CreateWithSql("PolicyName")
+
+// Full debug (SQL + Lambda)
+KeplerPolicyConfig.CreateWithFullDebug("PolicyName")
+
+// All support filters and custom roles:
+KeplerPolicyConfig.CreateWithSql("PolicyName", filters: dto, role: "Admin")
+```
+
+---
+
+## **Why Kepler?**
+
+### **Before Kepler:**
+```csharp
+// ❌ Manual projections (repetitive)
+var products = await query
+    .Select(x => new ProductDto 
+    { 
+        Id = x.Id, 
+        Name = x.Name, 
+        Price = x.Price 
+    })
+    .ToListAsync();
+
+// ❌ Over-fetching (loads everything)
+var products = await query.ToListAsync();
+```
+
+### **With Kepler:**
+```csharp
+// ✅ One-liner, type-safe, controlled
+var products = await query
+    .ApplyKeplerPolicy(KeplerPolicyConfig.Create("Public"))
+    .ToListAsync();
+
+// ✅ See exactly what's being fetched
+var products = await query
+    .ApplyKeplerPolicy(
+        KeplerPolicyConfig.CreateWithSql("Public"),
+        out string? sql)
+    .ToListAsync();
+```
+
+---
+
+## **License**
 
 MIT — see LICENSE.
 
-Contribute
+---
 
-If Kepler kills your CRUD pain:
-⭐ Star the repo • 🐞 Submit issues • 💬 PRs welcome
+## **Contributing**
+
+If Kepler solves your problem:
+
+⭐ **Star the repo**  
+🐞 **Report issues**  
+💬 **Suggest improvements**
 
 Built with ❤️ by Mohammad Ali Ebrahimzadeh

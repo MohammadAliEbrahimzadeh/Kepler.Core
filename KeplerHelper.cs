@@ -140,7 +140,7 @@ public static class KeplerExtensions
         where T : class
     {
         // Delegate to overload for backward compatibility (ignores lambda).
-        return ApplyKeplerPolicy(query, keplerPolicyConfig, out _);
+        return ApplyKeplerPolicy(query, keplerPolicyConfig, out Expression? _);
     }
 
     public static IQueryable<T> ApplyKeplerPolicy<T>(this IQueryable<T> query, KeplerPolicyConfig keplerPolicyConfig, out Expression? debugLambda)
@@ -203,6 +203,72 @@ public static class KeplerExtensions
             throw new InvalidOperationException(
                 $"Error applying Kepler policy '{keplerPolicyConfig.PolicyName}' for role '{keplerPolicyConfig.Role}': {ex.Message}", ex);
         }
+    }
+
+
+    /// <summary>
+    /// Apply Kepler policy with SQL query generation
+    /// Set ReturnSqlQueryGenerated = true in config to capture SQL
+    /// </summary>
+    public static IQueryable<T> ApplyKeplerPolicy<T>(this IQueryable<T> query, KeplerPolicyConfig keplerPolicyConfig, out string? generatedSql)
+        where T : class
+    {
+        generatedSql = null;
+
+        keplerPolicyConfig.ReturnSqlQueryGenerated = true;
+
+        var result = ApplyKeplerPolicy(query, keplerPolicyConfig, out Expression? _);
+
+        // Extract SQL if requested
+        if (keplerPolicyConfig.ReturnSqlQueryGenerated)
+        {
+            try
+            {
+                generatedSql = result.ToQueryString();
+            }
+            catch (Exception ex)
+            {
+                generatedSql = $"[Error generating SQL: {ex.Message}]";
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Apply Kepler policy with full debug information (SQL + Lambda)
+    /// Set ReturnFullDebugInfo = true in config to capture both
+    /// </summary>
+    public static IQueryable<T> ApplyKeplerPolicy<T>(this IQueryable<T> query, KeplerPolicyConfig keplerPolicyConfig, out KeplerDebugInfo? debugInfo)
+        where T : class
+    {
+        debugInfo = null;
+
+        keplerPolicyConfig.ReturnLambdaExpression = true;
+
+        var result = ApplyKeplerPolicy(query, keplerPolicyConfig, out Expression? debugLambda);
+
+        string? generatedSql = null;
+        if (keplerPolicyConfig.ReturnFullDebugInfo)
+        {
+            try
+            {
+                generatedSql = result.ToQueryString();
+            }
+            catch (Exception ex)
+            {
+                generatedSql = $"[Error generating SQL: {ex.Message}]";
+            }
+
+            // Build debug info
+            debugInfo = new KeplerDebugInfo
+            {
+                GeneratedSql = generatedSql,
+                ProjectionLambda = debugLambda
+            };
+        }
+
+        return result;
     }
 
     private static Expression? ExtractProjectionLambda<T>(IQueryable<T> query) where T : class
