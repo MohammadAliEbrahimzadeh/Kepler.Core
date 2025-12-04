@@ -42,7 +42,7 @@ public class ProductPublicPolicy : IKeplerPolicy<Product>
         builder
             .AllowFields(x => x.Name, x => x.Price, x => x.Id)
             .AllowFilter(x => x.Name, FilterOperationEnum.StartsWith)
-            .AllowOrderBy(x => x.Price);
+            .AllowOrderBy(x => x.Price, x => x.SellStartDate);
     }
 }
 ```
