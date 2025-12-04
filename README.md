@@ -56,7 +56,7 @@ builder.Services.AddKepler()
 
 ### **4. Apply in Queries**
 
-**Basic usage (no debug info):**
+**Basic usage:**
 ```csharp
 var products = await query
     .ApplyKeplerPolicy(KeplerPolicyConfig.Create("Public", filters: dto))
@@ -101,6 +101,26 @@ Console.WriteLine($"Lambda: {debug?.ProjectionLambda}");
 
 ---
 
+## **Ordering & Pagination**
+
+```csharp
+// Order by SellStartDate descending
+var products = await query
+    .ApplyKeplerPolicy(config)
+    .ApplyKeplerOrdering(KeplerOrderingConfig.CreateDescending("Public", "SellStartDate"), out string? sql)
+    .ApplyKeplerPagination(page: 1, pageSize: 10)
+    .ToListAsync();
+
+// Chain multiple order by
+var products = await query
+    .ApplyKeplerPolicy(config)
+    .ApplyKeplerOrdering(KeplerOrderingConfig.CreateDescending("Public", "CreatedAt"))
+    .ThenApplyKeplerOrdering(KeplerOrderingConfig.CreateAscending("Public", "Name"))
+    .ToListAsync();
+```
+
+---
+
 ## **Key Features**
 
 ### **Fluent Policy Builder**
@@ -125,7 +145,7 @@ builder.Entity<User>()
     .GloballyExclude(x => x.ApiKey, x => x.InternalNotes);
 ```
 
-### **Nested Navigation Policies**
+### **Nested Navigation Projections**
 ```csharp
 builder
     .AllowNestedFields(x => x.Orders, nested =>
@@ -140,20 +160,20 @@ builder
 Clean, self-documenting configuration:
 
 ```csharp
-// No debug
+// Projection
 KeplerPolicyConfig.Create("PolicyName")
-
-// Lambda inspection
 KeplerPolicyConfig.CreateWithLambda("PolicyName")
-
-// SQL visibility
 KeplerPolicyConfig.CreateWithSql("PolicyName")
-
-// Full debug (SQL + Lambda)
 KeplerPolicyConfig.CreateWithFullDebug("PolicyName")
 
-// All support filters and custom roles:
-KeplerPolicyConfig.CreateWithSql("PolicyName", filters: dto)
+// Ordering
+KeplerOrderingConfig.Create("PolicyName", "FieldName")
+KeplerOrderingConfig.CreateAscending("PolicyName", "FieldName")
+KeplerOrderingConfig.CreateDescending("PolicyName", "FieldName")
+KeplerOrderingConfig.CreateWithSql("PolicyName", "FieldName")
+
+// All support optional filters and ignoreGlobalExceptions
+KeplerPolicyConfig.CreateWithSql("PolicyName", filters: dto, ignoreGlobalExceptions: false)
 ```
 
 ---
@@ -174,6 +194,8 @@ var products = await query
 
 // ❌ Over-fetching (loads everything)
 var products = await query.ToListAsync();
+
+// ❌ No visibility into what's happening
 ```
 
 ### **With Kepler:**
