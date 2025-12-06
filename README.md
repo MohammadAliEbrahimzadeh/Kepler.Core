@@ -117,6 +117,14 @@ var products = await query
     .ApplyKeplerOrdering(KeplerOrderingConfig.CreateDescending("Public", "CreatedAt"))
     .ThenApplyKeplerOrdering(KeplerOrderingConfig.CreateAscending("Public", "Name"))
     .ToListAsync();
+
+var productsWithCount = query
+    .ApplyKeplerPolicy(config)
+    .ApplyKeplerOrdering(KeplerOrderingConfig.CreateDescending("Public", "SellStartDate"))
+    .ApplyKeplerPaginationWithCount(page: 1, pageSize: 10, out int totalCount)
+    .ToList();
+
+
 ```
 
 ---
