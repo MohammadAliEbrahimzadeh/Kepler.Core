@@ -28,18 +28,6 @@ namespace Kepler.Core.Pagination
         }
 
         /// <summary>
-        /// Applies pagination with default page and page size, and returns the total count of items.
-        /// </summary>
-        /// <typeparam name="T">The type of the query elements.</typeparam>
-        /// <param name="query">The IQueryable to paginate.</param>
-        /// <param name="totalCount">Outputs the total number of items in the original query.</param>
-        /// <returns>An IQueryable containing only the items for the default page (page 1, 10 items per page).</returns>
-        public static IQueryable<T> ApplyKeplerPaginationWithCount<T>(this IQueryable<T> query, out int totalCount) where T : class
-        {
-            return ApplyKeplerPaginationWithCount(query, 1, 10, out totalCount);
-        }
-
-        /// <summary>
         /// Applies pagination to the query and returns the total count of items.
         /// </summary>
         /// <typeparam name="T">The type of the query elements.</typeparam>
