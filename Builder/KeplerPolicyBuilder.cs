@@ -41,6 +41,11 @@ public interface IKeplerNestedFieldBuilder<T> where T : class
     IKeplerNestedFieldBuilder<T> SelectAllExcept(params Expression<Func<T, object>>[] excludeFields);
     IKeplerNestedFieldBuilder<T> ExcludeFields(params Expression<Func<T, object>>[] fields);
     IKeplerNestedFieldBuilder<T> MaxDepth(int depth);
+
+    IKeplerNestedFieldBuilder<T> SelectFields<TElement>(params Expression<Func<TElement, object>>[] fields) where TElement : class;
+
+    IKeplerNestedFieldBuilder<T> ExcludeFields<TElement>(params Expression<Func<TElement, object>>[] fields) where TElement : class;
+
     NestedFieldPolicy Build();
 }
 
@@ -412,6 +417,36 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
     {
         _navigationProperty = navigationProperty;
     }
+
+    public IKeplerNestedFieldBuilder<T> SelectFields<TElement>(params Expression<Func<TElement, object>>[] fields) where TElement : class
+    {
+        _allowedFields.AddRange(
+            fields.Select(f => ExtractPropertyNameForElement(f))
+        );
+        return this;
+    }
+
+    public IKeplerNestedFieldBuilder<T> ExcludeFields<TElement>(params Expression<Func<TElement, object>>[] fields) where TElement : class
+    {
+        _excludedFields.AddRange(
+            fields.Select(f => ExtractPropertyNameForElement(f))
+        );
+        return this;
+    }
+
+    private string ExtractPropertyNameForElement<TElement>(Expression<Func<TElement, object>> expr)
+    {
+        var body = expr.Body;
+        if (body is UnaryExpression u)
+            body = u.Operand;
+
+        if (body is MemberExpression m)
+            return m.Member.Name;
+
+        throw new InvalidOperationException($"Invalid expression: {expr}");
+    }
+
+
 
     // ✅ FIXED: Use object instead of generic TProp
     public IKeplerNestedFieldBuilder<T> SelectFields(params Expression<Func<T, object>>[] fields)

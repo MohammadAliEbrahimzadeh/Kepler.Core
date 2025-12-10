@@ -432,11 +432,11 @@ public static class KeplerExtensions
     }
 
     private static MemberBinding CreateSingleEntityProjection(
-       PropertyInfo navProperty,
-       Type entityType,
-       Expression entityAccess,
-       NestedFieldPolicy nestedPolicy,
-       bool ignoreGlobalExceptions)
+    PropertyInfo navProperty,
+    Type entityType,
+    Expression entityAccess,
+    NestedFieldPolicy nestedPolicy,
+    bool ignoreGlobalExceptions)
     {
         var entityParameter = Expression.Parameter(entityType, "entity");
         var projectionLambda = CreateNestedElementProjection(
@@ -444,7 +444,16 @@ public static class KeplerExtensions
             entityParameter,
             nestedPolicy,
             ignoreGlobalExceptions);
-        return Expression.Bind(navProperty, entityAccess);
+
+        var projectedEntity = Expression.Invoke(projectionLambda, entityAccess);
+
+        var nullCheck = Expression.Condition(
+            Expression.Equal(entityAccess, Expression.Constant(null)),
+            Expression.Constant(null, entityType),
+            projectedEntity
+        );
+
+        return Expression.Bind(navProperty, nullCheck);
     }
 
     private static LambdaExpression CreateNestedElementProjection(
