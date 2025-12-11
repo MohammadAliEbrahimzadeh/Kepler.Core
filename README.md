@@ -48,26 +48,47 @@ public class ProductPublicPolicy : IKeplerPolicy<Product>
 
 
 [KeplerPolicyName("Nav")]
-public class ProductNavtigationPolicy : IKeplerPolicy<Product>
+public class ProductNavigationPolicy : IKeplerPolicy<Product>
 {
     public void Configure(IKeplerPolicyBuilder<Product> builder)
     {
         builder
-         .AllowFields(x => x.Color!, x => x.Name!, x => x.MakeFlag, x => x.SellStartDate, x => x.ProductID)
+            .AllowFields(x => x.Color!, x => x.Name!, x => x.MakeFlag, x => x.SellStartDate, x => x.ProductID)
 
+            // Nested collections with selective projection
+            .AllowNestedFields(x => x.ProductCostHistories,
+                x => x.SelectFields<ProductCostHistory>(x => x.ProductID, x => x.StartDate, x => x.StandardCost))
 
-          // NEW GENERIC NESTED SUPPORT
-         .AllowNestedFields(x => x.ProductCostHistories, x => x.SelectFields<ProductCostHistory>(x => x.ProductID, x => x.StartDate, x => x.StandardCost))
+            // Filtered nested collections
+            .AllowFilteredNestedFields(x => x.ProductListPriceHistories.Where(x => x.ListPrice < 74),
+                x => x.SelectFields<ProductListPriceHistory>(
+                    plph => plph.ProductID,
+                    plph => plph.StartDate,
+                    plph => plph.EndDate!,
+                    plph => plph.ListPrice,
+                    plph => plph.ModifiedDate
+                ))
 
-         .AllowNestedFields(x => x.ProductModel!, x => x.SelectFields(x => x.ProductModelID, x => x.ModifiedDate!))
+            .AllowFilteredNestedFields(x => x.ProductInventories.Where(x => x.Quantity <= 324),
+                x => x.SelectFields<ProductInventory>(
+                    pi => pi.ProductID,
+                    pi => pi.LocationID,
+                    pi => pi.Shelf!,
+                    pi => pi.Bin,
+                    pi => pi.Quantity
+                ))
 
-         .AllowOrderBy(x => x.Name!, x => x.SellStartDate)
+            .AllowFilteredNestedFields(x => x.ProductReviews.Where(x => x.Rating == 5),
+                x => x.SelectFields<ProductReview>(x => x.Rating, x => x.ProductReviewID))
 
-         .AllowFilter(x => x.MakeFlag, FilterOperationEnum.Equals)
+            .AllowNestedFields(x => x.ProductModel!,
+                x => x.SelectFields<ProductModel>(x => x.ProductModelID, x => x.ModifiedDate!))
 
-         .AllowFilter(x => x.ProductID, FilterOperationEnum.Equals)
+            .AllowOrderBy(x => x.Name!, x => x.SellStartDate)
 
-         .AllowFilter(x => x.Name, FilterOperationEnum.StartsWith);
+            .AllowFilter(x => x.MakeFlag, FilterOperationEnum.Equals)
+            .AllowFilter(x => x.ProductID, FilterOperationEnum.Equals)
+            .AllowFilter(x => x.Name, FilterOperationEnum.StartsWith);
     }
 }
 

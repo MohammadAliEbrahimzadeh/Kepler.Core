@@ -33,6 +33,8 @@ public interface IKeplerPolicyBuilder<T> where T : class
     Dictionary<string, Dictionary<string, NestedFieldPolicy>> GetNestedPolicies();
 
     IKeplerPolicyBuilder<T> AllowFilter<TProp>(Expression<Func<T, TProp>> property, FilterOperationEnum allowedOperations = FilterOperationEnum.All);
+
+    IKeplerPolicyBuilder<T> AllowFilteredNestedFields<TNav>(Expression<Func<T, IEnumerable<TNav>>> navigationExpression, Action<IKeplerNestedFieldBuilder<TNav>> configureNested) where TNav : class;
 }
 
 public interface IKeplerNestedFieldBuilder<T> where T : class
@@ -46,6 +48,8 @@ public interface IKeplerNestedFieldBuilder<T> where T : class
 
     IKeplerNestedFieldBuilder<T> ExcludeFields<TElement>(params Expression<Func<TElement, object>>[] fields) where TElement : class;
 
+    IKeplerNestedFieldBuilder<T> Where(Expression<Func<T, bool>> condition);
+
     NestedFieldPolicy Build();
 }
 
@@ -57,6 +61,8 @@ public class NestedFieldPolicy
     public bool SelectAll { get; set; } = false;
     public string NavigationProperty { get; set; } = "";
     public Type NestedType { get; set; } = null!;
+
+    public LambdaExpression? WhereCondition { get; set; }
 }
 
 public class KeplerPolicyBuilder<T> : IKeplerPolicyBuilder<T> where T : class
@@ -80,6 +86,31 @@ public class KeplerPolicyBuilder<T> : IKeplerPolicyBuilder<T> where T : class
     }
 
     private readonly Dictionary<string, FilterPolicy> _allowedFilters = new();
+
+    public IKeplerPolicyBuilder<T> AllowFilteredNestedFields<TNav>(
+      Expression<Func<T, IEnumerable<TNav>>> navigationExpression,
+      Action<IKeplerNestedFieldBuilder<TNav>> configureNested)
+      where TNav : class
+    {
+        // Extract navigation property name (handles x => x.Nav and x => x.Nav.Where(...))
+        var navPropName = ExtractNavigationPropertyName(navigationExpression);
+        // Extract predicate (if any) from the Where(...) call chain
+        var whereCondition = ExtractWhereCondition<TNav>(navigationExpression);
+        var nestedBuilder = new KeplerNestedFieldBuilder<TNav>(navPropName);
+        // Apply where condition if found
+        if (whereCondition != null)
+        {
+            // Cast is safe because the lambda's parameter type comes from TNav
+            nestedBuilder.Where((Expression<Func<TNav, bool>>)whereCondition);
+        }
+        configureNested(nestedBuilder);
+        var policy = nestedBuilder.Build();
+        GetState().NestedFieldPolicies[navPropName] = policy;
+        if (!GetState().AllowedNavigationProps.Contains(navPropName, StringComparer.OrdinalIgnoreCase))
+            GetState().AllowedNavigationProps.Add(navPropName);
+        GetState().ExplicitlyAllowedNavProps = true;
+        return this;
+    }
 
 
     public IKeplerPolicyBuilder<T> AllowOrderBy(params Expression<Func<T, object>>[] fields)
@@ -390,6 +421,9 @@ public class KeplerPolicyBuilder<T> : IKeplerPolicyBuilder<T> where T : class
         return propertyNames;
     }
 
+
+
+
     private string ExtractPropertyName<TExpr>(Expression<Func<T, TExpr>> expression)
     {
         var body = expression.Body;
@@ -403,10 +437,114 @@ public class KeplerPolicyBuilder<T> : IKeplerPolicyBuilder<T> where T : class
         throw new InvalidOperationException(
             $"Invalid expression. Use simple property access like 'x => x.PropertyName'. Got: {expression}");
     }
+
+    // Robust helper to extract navigation property name from expressions like:
+    // - x => x.Collection
+    // - x => x.Collection.Where(...)
+    // - x => x.Collection.Where(...).Where(...)  (walks to root)
+    private string ExtractNavigationPropertyName<TNav>(
+        Expression<Func<T, IEnumerable<TNav>>> navigationExpression)
+        where TNav : class
+    {
+        Expression body = navigationExpression.Body;
+
+        // unwrap conversions
+        if (body is UnaryExpression unary)
+            body = unary.Operand;
+
+        // direct member: x => x.Collection
+        if (body is MemberExpression member)
+            return member.Member.Name;
+
+        // method chain: x => x.Collection.Where(...).Where(...)
+        if (body is MethodCallExpression call)
+        {
+            // Find the root source expression (member) by walking down the call chain
+            Expression? source = call.Object ?? (call.Arguments.Count > 0 ? call.Arguments[0] : null);
+
+            while (source is MethodCallExpression innerCall)
+            {
+                source = innerCall.Object ?? (innerCall.Arguments.Count > 0 ? innerCall.Arguments[0] : null);
+            }
+
+            if (source is MemberExpression rootMember)
+                return rootMember.Member.Name;
+
+            // static Enumerable.Where(source, predicate) pattern: first arg could be MemberExpression
+            if (call.Arguments.FirstOrDefault() is MemberExpression argMember)
+                return argMember.Member.Name;
+        }
+
+        // fallback to generic extractor (this will throw helpful message if not a simple property)
+        return ExtractPropertyName(navigationExpression);
+    }
+
+    // Robust helper to extract the first Where(...) predicate from a navigation expression chain.
+    // Supports both Queryable.Where and Enumerable.Where static call forms and chained calls.
+    private LambdaExpression? ExtractWhereCondition<TNav>(
+        Expression<Func<T, IEnumerable<TNav>>> navigationExpression)
+        where TNav : class
+    {
+        Expression body = navigationExpression.Body;
+
+        // unwrap conversions
+        if (body is UnaryExpression unary)
+            body = unary.Operand;
+
+        // Walk method-call chain to find the first Where(...)
+        MethodCallExpression? whereCall = FindWhereCall(body as Expression);
+
+        if (whereCall == null)
+            return null;
+
+        // Where usually has predicate as the second argument
+        if (whereCall.Arguments.Count < 2)
+            return null;
+
+        var predicateArg = whereCall.Arguments[1];
+
+        // If quoted (Expression Quote), unwrap
+        if (predicateArg is UnaryExpression quote && quote.NodeType == ExpressionType.Quote && quote.Operand is LambdaExpression lam)
+            return lam;
+
+        if (predicateArg is LambdaExpression lam2)
+            return lam2;
+
+        return null;
+    }
+
+    // helper that walks expression to locate a MethodCallExpression where Method.Name == "Where"
+    private MethodCallExpression? FindWhereCall(Expression? expr)
+    {
+        while (expr != null)
+        {
+            if (expr is MethodCallExpression call)
+            {
+                if (string.Equals(call.Method.Name, "Where", StringComparison.OrdinalIgnoreCase))
+                    return call;
+
+                // dive into call.Object, otherwise into first argument (static Enumerable methods)
+                expr = call.Object ?? (call.Arguments.Count > 0 ? call.Arguments[0] : null);
+                continue;
+            }
+
+            // if it's a unary wrap, unwrap
+            if (expr is UnaryExpression unary)
+            {
+                expr = unary.Operand;
+                continue;
+            }
+
+            break;
+        }
+
+        return null;
+    }
 }
 
 public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T : class
 {
+    private Expression<Func<T, bool>>? _whereCondition;
     private readonly string _navigationProperty;
     private List<string> _allowedFields = new();
     private List<string> _excludedFields = new();
@@ -417,6 +555,13 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
     {
         _navigationProperty = navigationProperty;
     }
+
+    public IKeplerNestedFieldBuilder<T> Where(Expression<Func<T, bool>> condition)
+    {
+        _whereCondition = condition;
+        return this;
+    }
+
 
     public IKeplerNestedFieldBuilder<T> SelectFields<TElement>(params Expression<Func<TElement, object>>[] fields) where TElement : class
     {
@@ -483,7 +628,6 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
             throw new InvalidOperationException(
                 $"Nested field policy for '{_navigationProperty}' has no fields configured. " +
                 $"Use SelectFields(), SelectAllExcept(), or ExcludeFields().");
-
         return new NestedFieldPolicy
         {
             NavigationProperty = _navigationProperty,
@@ -491,7 +635,8 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
             ExcludedFields = _excludedFields,
             MaxDepth = _maxDepth,
             SelectAll = _selectAll,
-            NestedType = typeof(T)
+            NestedType = typeof(T),
+            WhereCondition = _whereCondition  // ← Already set
         };
     }
 

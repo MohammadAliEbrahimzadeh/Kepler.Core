@@ -417,12 +417,36 @@ public static class KeplerExtensions
             elementParameter,
             nestedPolicy,
             ignoreGlobalExceptions);
+
+        // FIXED: Apply Where filter if present (before Select — filters the collection/join)
+        Expression filteredCollection = collectionAccess;
+        if (nestedPolicy.WhereCondition != null)
+        {
+            // Ensure the Where lambda's parameter matches elementType (replace if needed)
+            var whereLambda = nestedPolicy.WhereCondition;
+            var whereParam = whereLambda.Parameters[0];
+            if (whereParam.Type != elementType)
+            {
+                // Replace parameter with matching type (rare, but safe)
+                whereLambda = new ParameterReplacer(whereParam, elementParameter).Visit(whereLambda) as LambdaExpression
+                    ?? throw new InvalidOperationException("Failed to adjust Where lambda parameter type.");
+            }
+            var whereMethod = typeof(Enumerable)
+                .GetMethods()
+                .Where(m => m.Name == "Where" && m.GetParameters().Length == 2)
+                .First()
+                .MakeGenericMethod(elementType);
+            filteredCollection = Expression.Call(whereMethod, collectionAccess, whereLambda);
+        }
+
+        // Now Select on the (potentially filtered) collection
         var selectMethod = typeof(Enumerable)
             .GetMethods()
             .Where(m => m.Name == "Select" && m.GetGenericArguments().Length == 2)
             .First();
         var selectGenericMethod = selectMethod.MakeGenericMethod(elementType, elementType);
-        var selectedCollection = Expression.Call(selectGenericMethod, collectionAccess, projectionLambda);
+        var selectedCollection = Expression.Call(selectGenericMethod, filteredCollection, projectionLambda);
+
         var toListMethod = typeof(Enumerable)
             .GetMethods()
             .First(m => m.Name == "ToList" && m.GetGenericArguments().Length == 1)
@@ -706,5 +730,22 @@ public static class KeplerExtensions
         return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => !IsNavigationProperty(p))
             .Select(p => p.Name);
+    }
+}
+
+internal class ParameterReplacer : ExpressionVisitor
+{
+    private readonly ParameterExpression _oldParam;
+    private readonly ParameterExpression _newParam;
+
+    public ParameterReplacer(ParameterExpression oldParam, ParameterExpression newParam)
+    {
+        _oldParam = oldParam;
+        _newParam = newParam;
+    }
+
+    protected override Expression VisitParameter(ParameterExpression node)
+    {
+        return node == _oldParam ? _newParam : base.VisitParameter(node);
     }
 }
