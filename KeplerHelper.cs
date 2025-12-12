@@ -306,7 +306,7 @@ public static class KeplerExtensions
     {
         IEnumerable<string> globalExcluded = ignoreGlobalExceptions
             ? Enumerable.Empty<string>()
-            : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties<T>();
+            : KeplerGlobalExcludeHelper.GetGloballyExcludedPropertiesIncludingEFConfig<T>();
         var allExcludedFields = excludeFields == null
             ? globalExcluded.ToList()
             : excludeFields.Union(globalExcluded, StringComparer.OrdinalIgnoreCase).ToList();
@@ -490,7 +490,7 @@ public static class KeplerExtensions
         var allBindings = new List<MemberBinding>();
         var globallyExcluded = ignoreGlobalExceptions
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties(elementType);
+            : KeplerGlobalExcludeHelper.GetGloballyExcludedPropertiesIncludingEFConfig(elementType);
         var fieldsToInclude = new List<string>();
         if (nestedPolicy.SelectAll)
         {
@@ -619,7 +619,7 @@ public static class KeplerExtensions
     {
         var globalExcludes = ignoreGlobalExceptions
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) // Empty set if ignoring
-            : KeplerGlobalExcludeHelper.GetGloballyExcludedProperties(navType);
+            : KeplerGlobalExcludeHelper.GetGloballyExcludedPropertiesIncludingEFConfig(navType);
         var scalarProps = GetScalarPropertiesForType(navType).ToList();
         // Only exclude globally excluded properties if NOT ignoring
         var excluded = ignoreGlobalExceptions

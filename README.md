@@ -234,6 +234,21 @@ KeplerPolicyConfig.CreateWithSql("PolicyName", filters: dto, ignoreGlobalExcepti
 
 ---
 
+## Debug Full Policy Info
+
+
+You can now inspect the full policy configuration, including allowed fields, nested projections, global exclusions, filters, order-by fields, and excluded fields.
+
+```csharp
+
+var config = KeplerPolicyHelper.GetPolicyConfiguration(typeof(Product), "Nav", "Test1");
+
+
+```
+
+---
+
+
 ## **Why Kepler?**
 
 ### **Before Kepler:**
