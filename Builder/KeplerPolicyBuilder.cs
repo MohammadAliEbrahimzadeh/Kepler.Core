@@ -50,6 +50,16 @@ public interface IKeplerNestedFieldBuilder<T> where T : class
 
     IKeplerNestedFieldBuilder<T> Where(Expression<Func<T, bool>> condition);
 
+    IKeplerNestedFieldBuilder<T> ThenInclude<TNav>(
+        Expression<Func<T, IEnumerable<TNav>>> navigationExpression,
+        Action<IKeplerNestedFieldBuilder<TNav>> configureNested)
+        where TNav : class;
+
+    IKeplerNestedFieldBuilder<T> ThenInclude<TNested>(
+        Expression<Func<T, TNested>> navigationExpression,
+        Action<IKeplerNestedFieldBuilder<TNested>> configureNested)
+        where TNested : class;
+
     NestedFieldPolicy Build();
 }
 
@@ -63,6 +73,9 @@ public class NestedFieldPolicy
     public Type NestedType { get; set; } = null!;
 
     public LambdaExpression? WhereCondition { get; set; }
+
+    // ThenInclude support - nested policies within this nested field
+    public Dictionary<string, NestedFieldPolicy> ThenIncludePolicies { get; set; } = new();
 }
 
 public class KeplerPolicyBuilder<T> : IKeplerPolicyBuilder<T> where T : class
@@ -550,6 +563,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
     private List<string> _excludedFields = new();
     private int _maxDepth = int.MaxValue;
     private bool _selectAll = false;
+    private readonly Dictionary<string, NestedFieldPolicy> _thenIncludePolicies = new();
 
     public KeplerNestedFieldBuilder(string navigationProperty)
     {
@@ -559,6 +573,32 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
     public IKeplerNestedFieldBuilder<T> Where(Expression<Func<T, bool>> condition)
     {
         _whereCondition = condition;
+        return this;
+    }
+
+    public IKeplerNestedFieldBuilder<T> ThenInclude<TNav>(
+        Expression<Func<T, IEnumerable<TNav>>> navigationExpression,
+        Action<IKeplerNestedFieldBuilder<TNav>> configureNested)
+        where TNav : class
+    {
+        var navPropName = ExtractPropertyName(navigationExpression);
+        var nestedBuilder = new KeplerNestedFieldBuilder<TNav>(navPropName);
+        configureNested(nestedBuilder);
+        var policy = nestedBuilder.Build();
+        _thenIncludePolicies[navPropName] = policy;
+        return this;
+    }
+
+    public IKeplerNestedFieldBuilder<T> ThenInclude<TNested>(
+        Expression<Func<T, TNested>> navigationExpression,
+        Action<IKeplerNestedFieldBuilder<TNested>> configureNested)
+        where TNested : class
+    {
+        var navPropName = ExtractPropertyName(navigationExpression);
+        var nestedBuilder = new KeplerNestedFieldBuilder<TNested>(navPropName);
+        configureNested(nestedBuilder);
+        var policy = nestedBuilder.Build();
+        _thenIncludePolicies[navPropName] = policy;
         return this;
     }
 
@@ -636,7 +676,8 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
             MaxDepth = _maxDepth,
             SelectAll = _selectAll,
             NestedType = typeof(T),
-            WhereCondition = _whereCondition  // ← Already set
+            WhereCondition = _whereCondition,
+            ThenIncludePolicies = _thenIncludePolicies
         };
     }
 

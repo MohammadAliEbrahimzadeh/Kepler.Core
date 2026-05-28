@@ -31,7 +31,7 @@ public static class KeplerPolicyHelper
             if (policies.TryGetValue(role, out var scalar))
                 allowed.AddRange(scalar);
 
-            // 2. Nested fields
+            // 2. Nested fields (first level)
             var nested = GetNestedFieldPolicies(entityType, policyName, role);
 
             foreach (var (nav, nestedPolicy) in nested)
@@ -41,6 +41,17 @@ public static class KeplerPolicyHelper
                     var full = $"{nav}.{field}";
                     if (!allowed.Contains(full, StringComparer.OrdinalIgnoreCase))
                         allowed.Add(full);
+                }
+
+                // 3. ThenInclude fields (second level)
+                foreach (var (thenNav, thenPolicy) in nestedPolicy.ThenIncludePolicies)
+                {
+                    foreach (var field in thenPolicy.AllowedFields)
+                    {
+                        var full = $"{nav}.{thenNav}.{field}";
+                        if (!allowed.Contains(full, StringComparer.OrdinalIgnoreCase))
+                            allowed.Add(full);
+                    }
                 }
             }
 
@@ -202,6 +213,21 @@ public static class KeplerPolicyHelper
 
                 if (policy.WhereCondition != null)
                     Console.WriteLine("      🔍 Has condition");
+
+                // ThenInclude fields (second level)
+                if (policy.ThenIncludePolicies.Any())
+                {
+                    Console.WriteLine("      ↳ ThenInclude:");
+                    foreach (var (thenNav, thenPolicy) in policy.ThenIncludePolicies)
+                    {
+                        Console.WriteLine($"         - {thenNav}:");
+                        foreach (var f in thenPolicy.AllowedFields)
+                            Console.WriteLine($"            • {nav}.{thenNav}.{f}");
+
+                        if (thenPolicy.WhereCondition != null)
+                            Console.WriteLine("            🔍 Has condition");
+                    }
+                }
             }
         }
 
