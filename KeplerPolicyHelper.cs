@@ -31,28 +31,12 @@ public static class KeplerPolicyHelper
             if (policies.TryGetValue(role, out var scalar))
                 allowed.AddRange(scalar);
 
-            // 2. Nested fields (first level)
+            // 2. Nested fields (recursive, unlimited depth)
             var nested = GetNestedFieldPolicies(entityType, policyName, role);
 
             foreach (var (nav, nestedPolicy) in nested)
             {
-                foreach (var field in nestedPolicy.AllowedFields)
-                {
-                    var full = $"{nav}.{field}";
-                    if (!allowed.Contains(full, StringComparer.OrdinalIgnoreCase))
-                        allowed.Add(full);
-                }
-
-                // 3. ThenInclude fields (second level)
-                foreach (var (thenNav, thenPolicy) in nestedPolicy.ThenIncludePolicies)
-                {
-                    foreach (var field in thenPolicy.AllowedFields)
-                    {
-                        var full = $"{nav}.{thenNav}.{field}";
-                        if (!allowed.Contains(full, StringComparer.OrdinalIgnoreCase))
-                            allowed.Add(full);
-                    }
-                }
+                CollectNestedFields(nav, nestedPolicy, allowed, new List<string>());
             }
 
             // APPLY GLOBAL EXCLUDES
@@ -72,6 +56,29 @@ public static class KeplerPolicyHelper
         catch
         {
             return new List<string>();
+        }
+    }
+
+    private static void CollectNestedFields(string path, NestedFieldPolicy policy, List<string> allowed, List<string> visited)
+    {
+        // Prevent circular references
+        if (visited.Contains(path))
+            return;
+        visited.Add(path);
+
+        // Add fields at current level
+        foreach (var field in policy.AllowedFields)
+        {
+            var full = $"{path}.{field}";
+            if (!allowed.Contains(full, StringComparer.OrdinalIgnoreCase))
+                allowed.Add(full);
+        }
+
+        // Recursively collect ThenInclude fields
+        foreach (var (thenNav, thenPolicy) in policy.ThenIncludePolicies)
+        {
+            var newPath = $"{path}.{thenNav}";
+            CollectNestedFields(newPath, thenPolicy, allowed, new List<string>(visited));
         }
     }
 
@@ -201,33 +208,13 @@ public static class KeplerPolicyHelper
                 Console.WriteLine($"   - {f}");
         }
 
-        // Nested fields
+        // Nested fields (recursive, unlimited depth)
         if (cfg.NestedFieldPolicies.Any())
         {
             Console.WriteLine("\n🔗 Nested Fields:");
             foreach (var (nav, policy) in cfg.NestedFieldPolicies)
             {
-                Console.WriteLine($"   - {nav}:");
-                foreach (var f in policy.AllowedFields)
-                    Console.WriteLine($"      • {nav}.{f}");
-
-                if (policy.WhereCondition != null)
-                    Console.WriteLine("      🔍 Has condition");
-
-                // ThenInclude fields (second level)
-                if (policy.ThenIncludePolicies.Any())
-                {
-                    Console.WriteLine("      ↳ ThenInclude:");
-                    foreach (var (thenNav, thenPolicy) in policy.ThenIncludePolicies)
-                    {
-                        Console.WriteLine($"         - {thenNav}:");
-                        foreach (var f in thenPolicy.AllowedFields)
-                            Console.WriteLine($"            • {nav}.{thenNav}.{f}");
-
-                        if (thenPolicy.WhereCondition != null)
-                            Console.WriteLine("            🔍 Has condition");
-                    }
-                }
+                PrintNestedField(nav, policy, "", new List<string>());
             }
         }
 
@@ -265,6 +252,34 @@ public static class KeplerPolicyHelper
 
     public static void PrintPolicyConfiguration<T>(string policyName, string role = "Default") where T : class =>
         PrintPolicyConfiguration(typeof(T), policyName, role);
+
+    private static void PrintNestedField(string nav, NestedFieldPolicy policy, string indent, List<string> visited)
+    {
+        // Prevent circular references
+        if (visited.Contains(nav))
+        {
+            Console.WriteLine($"{indent}   - {nav}: (circular reference, skipped)");
+            return;
+        }
+        visited.Add(nav);
+
+        Console.WriteLine($"{indent}   - {nav}:");
+        foreach (var f in policy.AllowedFields)
+            Console.WriteLine($"{indent}      • {nav}.{f}");
+
+        if (policy.WhereCondition != null)
+            Console.WriteLine($"{indent}      🔍 Has condition");
+
+        // Recursively print ThenInclude fields
+        if (policy.ThenIncludePolicies.Any())
+        {
+            Console.WriteLine($"{indent}      ↳ ThenInclude:");
+            foreach (var (thenNav, thenPolicy) in policy.ThenIncludePolicies)
+            {
+                PrintNestedField(thenNav, thenPolicy, indent + "   ", new List<string>(visited));
+            }
+        }
+    }
 }
 
 
