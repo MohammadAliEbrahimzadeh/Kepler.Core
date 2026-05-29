@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11505.172 d18.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kepler.Core", "Kepler.Core.csproj", "{60371058-0790-8BCD-A74B-158CC123F1D8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{60371058-0790-8BCD-A74B-158CC123F1D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60371058-0790-8BCD-A74B-158CC123F1D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60371058-0790-8BCD-A74B-158CC123F1D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60371058-0790-8BCD-A74B-158CC123F1D8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4E403C20-7529-460A-81AB-960FA4E10822}
+	EndGlobalSection
+EndGlobal
