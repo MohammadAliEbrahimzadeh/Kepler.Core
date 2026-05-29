@@ -581,7 +581,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
         Action<IKeplerNestedFieldBuilder<TNav>> configureNested)
         where TNav : class
     {
-        var navPropName = ExtractPropertyName(navigationExpression);
+        var navPropName = ExtractPropertyNameForNavigation(navigationExpression);
         var nestedBuilder = new KeplerNestedFieldBuilder<TNav>(navPropName);
         configureNested(nestedBuilder);
         var policy = nestedBuilder.Build();
@@ -594,7 +594,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
         Action<IKeplerNestedFieldBuilder<TNested>> configureNested)
         where TNested : class
     {
-        var navPropName = ExtractPropertyName(navigationExpression);
+        var navPropName = ExtractPropertyNameForNavigation(navigationExpression);
         var nestedBuilder = new KeplerNestedFieldBuilder<TNested>(navPropName);
         configureNested(nestedBuilder);
         var policy = nestedBuilder.Build();
@@ -710,5 +710,20 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
 
         throw new InvalidOperationException(
             $"Invalid expression. Use simple property access like 'x => x.PropertyName'. Got: {expression}");
+    }
+
+    // Helper to extract property name from navigation expressions (IEnumerable<TNav> or TNested)
+    private string ExtractPropertyNameForNavigation<TExpr>(Expression<Func<T, TExpr>> expression)
+    {
+        var body = expression.Body;
+
+        if (body is UnaryExpression unary)
+            body = unary.Operand;
+
+        if (body is MemberExpression member)
+            return member.Member.Name;
+
+        throw new InvalidOperationException(
+            $"Invalid navigation expression. Use simple property access like 'x => x.Navigation'. Got: {expression}");
     }
 }
