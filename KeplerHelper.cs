@@ -394,49 +394,65 @@ public static class KeplerExtensions
     }
 
     private static MemberBinding BuildNestedBinding(
-    PropertyInfo navProp,
-    Type navType,
-    Expression navAccess,
-    NestedFieldPolicy nestedPolicy,
-    bool ignoreGlobalExceptions)
+        PropertyInfo navProp,
+        Type navType,
+        Expression navAccess,
+        NestedFieldPolicy nestedPolicy,
+        bool ignoreGlobalExceptions)
     {
-        var param = Expression.Parameter(navType, "n");
-
-        var projection = CreateNestedElementProjection(
-            navType,
-            param,
-            nestedPolicy,
-            ignoreGlobalExceptions);
-
         var isCollection = navType.IsGenericType &&
-                           typeof(IEnumerable<>)
-                           .IsAssignableFrom(navType.GetGenericTypeDefinition());
+                           (navType.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+                            navType.GetGenericTypeDefinition() == typeof(IEnumerable<>) ||
+                            navType.GetGenericTypeDefinition() == typeof(IList<>) ||
+                            navType.GetGenericTypeDefinition() == typeof(List<>));
 
         if (isCollection)
         {
             var elementType = navType.GetGenericArguments()[0];
+            var elementParam = Expression.Parameter(elementType, "n");
+
+            var projection = CreateNestedElementProjection(
+                elementType, elementParam, nestedPolicy, ignoreGlobalExceptions);
+
+            // Apply Where filter if present
+            Expression source = navAccess;
+            if (nestedPolicy.WhereCondition != null)
+            {
+                var whereMethod = typeof(Enumerable)
+                    .GetMethods()
+                    .First(m => m.Name == "Where" && m.GetParameters().Length == 2)
+                    .MakeGenericMethod(elementType);
+                source = Expression.Call(whereMethod, navAccess, nestedPolicy.WhereCondition);
+            }
 
             var select = Expression.Call(
-                typeof(Enumerable),
-                "Select",
-                new[] { navType.GetGenericArguments()[0], navType.GetGenericArguments()[0] },
-                navAccess,
-                projection
-            );
+                typeof(Enumerable), "Select",
+                new[] { elementType, elementType },
+                source, projection);
 
             var toList = Expression.Call(
-                typeof(Enumerable),
-                "ToList",
+                typeof(Enumerable), "ToList",
                 new[] { elementType },
-                select
-            );
+                select);
 
             return Expression.Bind(navProp, toList);
         }
+        else
+        {
+            // Single navigation property
+            var entityParam = Expression.Parameter(navType, "n");
+            var projection = CreateNestedElementProjection(
+                navType, entityParam, nestedPolicy, ignoreGlobalExceptions);
 
-        var invoked = Expression.Invoke(projection, navAccess);
+            var projected = Expression.Invoke(projection, navAccess);
 
-        return Expression.Bind(navProp, invoked);
+            var nullCheck = Expression.Condition(
+                Expression.Equal(navAccess, Expression.Constant(null, navType)),
+                Expression.Constant(null, navType),
+                projected);
+
+            return Expression.Bind(navProp, nullCheck);
+        }
     }
 
     private static MemberBinding? CreateNestedProjection(
@@ -625,9 +641,25 @@ public static class KeplerExtensions
             }
         }
         // Bind all navigation props to default (prevent loading related entities)
+        // Bind navigation properties — recurse into children, null out the rest
         foreach (var navProp in properties.Where(p => IsNavigationProperty(p)))
         {
-            if (!allBindings.Any(b => ((MemberInfo)b.Member).Name == navProp.Name))
+            if (allBindings.Any(b => ((MemberInfo)b.Member).Name == navProp.Name))
+                continue;
+
+            if (nestedPolicy.Children.TryGetValue(navProp.Name, out var childPolicy))
+            {
+                // Recurse: build a real projection for this child
+                var childNavAccess = Expression.Property(elementParameter, navProp);
+                var childBinding = BuildNestedBinding(
+                    navProp,
+                    navProp.PropertyType,
+                    childNavAccess,
+                    childPolicy,
+                    ignoreGlobalExceptions);
+                allBindings.Add(childBinding);
+            }
+            else
             {
                 var defaultValue = GetDefaultValueForType(navProp.PropertyType);
                 var constant = Expression.Constant(defaultValue, navProp.PropertyType);
