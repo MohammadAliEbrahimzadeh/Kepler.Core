@@ -307,77 +307,136 @@ public static class KeplerExtensions
         IEnumerable<string> globalExcluded = ignoreGlobalExceptions
             ? Enumerable.Empty<string>()
             : KeplerGlobalExcludeHelper.GetGloballyExcludedPropertiesIncludingEFConfig<T>();
+
         var allExcludedFields = excludeFields == null
             ? globalExcluded.ToList()
             : excludeFields.Union(globalExcluded, StringComparer.OrdinalIgnoreCase).ToList();
-        // Remove excluded from scalar fields
+
         var fieldsToSelect = scalarFieldNames
             .Where(f => !allExcludedFields.Contains(f, StringComparer.OrdinalIgnoreCase))
             .ToArray();
+
         if (!fieldsToSelect.Any() && !navigationProps.Any() && !nestedPolicies.Any())
             throw new ArgumentException("No fields to select after applying exclusions");
+
         var parameter = Expression.Parameter(typeof(T), "x");
         var properties = typeof(T).GetProperties();
+
+        var allBindings = new List<MemberBinding>();
+
+        // -------------------------
+        // Scalar fields
+        // -------------------------
         var selectedProperties = properties
             .Where(p => fieldsToSelect.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
             .ToList();
-        var allBindings = new List<MemberBinding>();
-        allBindings.AddRange(selectedProperties
-            .Select(prop => Expression.Bind(prop, Expression.Property(parameter, prop))));
+
+        allBindings.AddRange(
+            selectedProperties.Select(p =>
+                Expression.Bind(p, Expression.Property(parameter, p)))
+        );
+
+        // -------------------------
+        // Excluded fields => default
+        // -------------------------
         foreach (var excludeName in allExcludedFields)
         {
-            var propInfo = properties.FirstOrDefault(p =>
+            var prop = properties.FirstOrDefault(p =>
                 string.Equals(p.Name, excludeName, StringComparison.OrdinalIgnoreCase));
-            if (propInfo == null) continue;
-            var defaultValue = GetDefaultValueForType(propInfo.PropertyType);
-            allBindings.Add(Expression.Bind(propInfo, Expression.Constant(defaultValue, propInfo.PropertyType)));
+
+            if (prop == null) continue;
+
+            var defaultValue = GetDefaultValueForType(prop.PropertyType);
+
+            allBindings.Add(
+                Expression.Bind(prop, Expression.Constant(defaultValue, prop.PropertyType))
+            );
         }
-        foreach (var navProp in navigationProps)
+
+        // -------------------------
+        // Navigation properties
+        // -------------------------
+        foreach (var navProp in properties.Where(p => IsNavigationProperty(p)))
         {
-            var navProperty = properties.FirstOrDefault(p =>
-                string.Equals(p.Name, navProp, StringComparison.OrdinalIgnoreCase));
-            if (navProperty == null) continue;
-            MemberBinding? nestedBinding = null;
-            if (nestedPolicies.TryGetValue(navProp, out var nestedPolicy))
+            var navAccess = Expression.Property(parameter, navProp);
+
+            // case 1: explicit nested policy exists
+            if (nestedPolicies.TryGetValue(navProp.Name, out var nestedPolicy))
             {
-                // Use explicit nested policy
-                nestedBinding = CreateNestedProjection(parameter, navProperty, nestedPolicy, ignoreGlobalExceptions);
+                var binding = BuildNestedBinding(
+                    navProp,
+                    navProp.PropertyType,
+                    navAccess,
+                    nestedPolicy,
+                    ignoreGlobalExceptions);
+
+                allBindings.Add(binding);
             }
             else
             {
-                // Create default nested policy that includes all scalar fields (except globally excluded if not ignoring)
-                var defaultNested = CreateDefaultNestedPolicy(navProperty.PropertyType, navProp, ignoreGlobalExceptions);
-                nestedBinding = CreateNestedProjection(parameter, navProperty, defaultNested, ignoreGlobalExceptions);
-            }
-            if (nestedBinding != null)
-            {
-                allBindings.Add(nestedBinding);
-            }
-            else
-            {
-                // Last fallback: include navigation property as-is
-                allBindings.Add(Expression.Bind(navProperty, Expression.Property(parameter, navProperty)));
+                // default: null out navigation property
+                var defaultValue = GetDefaultValueForType(navProp.PropertyType);
+
+                allBindings.Add(
+                    Expression.Bind(navProp, Expression.Constant(defaultValue, navProp.PropertyType))
+                );
             }
         }
-        var allNavProps = GetAllNavigationProperties<T>();
-        foreach (var notIncluded in allNavProps
-            .Where(np => !navigationProps.Contains(np, StringComparer.OrdinalIgnoreCase)
-                         && !nestedPolicies.ContainsKey(np)))
-        {
-            var navPropInfo = properties.FirstOrDefault(p =>
-                string.Equals(p.Name, notIncluded, StringComparison.OrdinalIgnoreCase));
-            if (navPropInfo != null)
-            {
-                var defaultVal = GetDefaultValueForType(navPropInfo.PropertyType);
-                allBindings.Add(Expression.Bind(navPropInfo, Expression.Constant(defaultVal, navPropInfo.PropertyType)));
-            }
-        }
+
         if (!allBindings.Any())
             throw new ArgumentException($"No fields configured for type {typeof(T).Name}");
-        var newExpression = Expression.New(typeof(T));
-        var init = Expression.MemberInit(newExpression, allBindings);
+
+        var newExpr = Expression.New(typeof(T));
+        var init = Expression.MemberInit(newExpr, allBindings);
+
         var lambda = Expression.Lambda<Func<T, T>>(init, parameter);
         return query.Select(lambda);
+    }
+
+    private static MemberBinding BuildNestedBinding(
+    PropertyInfo navProp,
+    Type navType,
+    Expression navAccess,
+    NestedFieldPolicy nestedPolicy,
+    bool ignoreGlobalExceptions)
+    {
+        var param = Expression.Parameter(navType, "n");
+
+        var projection = CreateNestedElementProjection(
+            navType,
+            param,
+            nestedPolicy,
+            ignoreGlobalExceptions);
+
+        var isCollection = navType.IsGenericType &&
+                           typeof(IEnumerable<>)
+                           .IsAssignableFrom(navType.GetGenericTypeDefinition());
+
+        if (isCollection)
+        {
+            var elementType = navType.GetGenericArguments()[0];
+
+            var select = Expression.Call(
+                typeof(Enumerable),
+                "Select",
+                new[] { navType.GetGenericArguments()[0], navType.GetGenericArguments()[0] },
+                navAccess,
+                projection
+            );
+
+            var toList = Expression.Call(
+                typeof(Enumerable),
+                "ToList",
+                new[] { elementType },
+                select
+            );
+
+            return Expression.Bind(navProp, toList);
+        }
+
+        var invoked = Expression.Invoke(projection, navAccess);
+
+        return Expression.Bind(navProp, invoked);
     }
 
     private static MemberBinding? CreateNestedProjection(
@@ -705,6 +764,13 @@ public static class KeplerExtensions
         if (underlyingType == typeof(Guid)) return Guid.Empty;
         if (underlyingType == typeof(decimal)) return decimal.Zero;
         return null;
+    }
+
+
+    private static bool IsCollectionType(Type type)
+    {
+        return type.IsGenericType &&
+               typeof(IEnumerable<>).IsAssignableFrom(type.GetGenericTypeDefinition());
     }
 
     private static bool IsCollectionOrNavigationType(Type propType)

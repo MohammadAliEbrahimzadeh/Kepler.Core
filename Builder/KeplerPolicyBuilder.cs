@@ -65,17 +65,22 @@ public interface IKeplerNestedFieldBuilder<T> where T : class
 
 public class NestedFieldPolicy
 {
+    public string NavigationProperty { get; set; } = "";
+
     public List<string> AllowedFields { get; set; } = new();
     public List<string> ExcludedFields { get; set; } = new();
-    public int MaxDepth { get; set; } = int.MaxValue;
-    public bool SelectAll { get; set; } = false;
-    public string NavigationProperty { get; set; } = "";
-    public Type NestedType { get; set; } = null!;
 
-    public LambdaExpression? WhereCondition { get; set; }
+    public bool SelectAll { get; set; } = true;
 
-    // ThenInclude support - nested policies within this nested field
-    public Dictionary<string, NestedFieldPolicy> ThenIncludePolicies { get; set; } = new();
+    public int MaxDepth { get; set; } = 1;
+
+    public Type? NestedType { get; set; }
+
+    // 🔥 SINGLE SOURCE OF TRUTH FOR NESTED STRUCTURE
+    public Dictionary<string, NestedFieldPolicy> Children { get; set; } = new();
+
+    // Optional filter on collection navigation
+    public System.Linq.Expressions.LambdaExpression? WhereCondition { get; set; }
 }
 
 public class KeplerPolicyBuilder<T> : IKeplerPolicyBuilder<T> where T : class
@@ -563,8 +568,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
     private List<string> _excludedFields = new();
     private int _maxDepth = int.MaxValue;
     private bool _selectAll = false;
-    private readonly Dictionary<string, NestedFieldPolicy> _thenIncludePolicies = new();
-
+    private readonly Dictionary<string, NestedFieldPolicy> _children = new();
     public KeplerNestedFieldBuilder(string navigationProperty)
     {
         _navigationProperty = navigationProperty;
@@ -585,7 +589,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
         var nestedBuilder = new KeplerNestedFieldBuilder<TNav>(navPropName);
         configureNested(nestedBuilder);
         var policy = nestedBuilder.Build();
-        _thenIncludePolicies[navPropName] = policy;
+        _children[navPropName] = policy;
         return this;
     }
 
@@ -598,7 +602,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
         var nestedBuilder = new KeplerNestedFieldBuilder<TNested>(navPropName);
         configureNested(nestedBuilder);
         var policy = nestedBuilder.Build();
-        _thenIncludePolicies[navPropName] = policy;
+        _children[navPropName] = policy;
         return this;
     }
 
@@ -677,7 +681,7 @@ public class KeplerNestedFieldBuilder<T> : IKeplerNestedFieldBuilder<T> where T 
             SelectAll = _selectAll,
             NestedType = typeof(T),
             WhereCondition = _whereCondition,
-            ThenIncludePolicies = _thenIncludePolicies
+            Children = _children
         };
     }
 
