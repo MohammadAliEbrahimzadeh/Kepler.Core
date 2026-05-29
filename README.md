@@ -369,7 +369,7 @@ All factory methods accept optional `filters`, `role`, and `ignoreGlobalExceptio
 
 ## **Changelog**
 
-### v1.1.x
+### v1.3.x
 - ✅ **Fixed:** Deep nested traversal via `ThenInclude` now correctly generates multi-level SQL JOINs
 - ✅ **Fixed:** `BuildNestedBinding` now handles all collection types (`ICollection<>`, `IList<>`, `List<>`, `IEnumerable<>`)
 - ✅ Children in `NestedFieldPolicy` are now recursively projected instead of being nulled out
